@@ -54,8 +54,8 @@ Would you like to proceed with this partnership?
     const sentMessage = await bot.telegram.sendMessage(chatId, message, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Yes', callback_data: `YES_${projectData.groupId}_${chatId}` }],
-          [{ text: 'No', callback_data: `NO_${projectData.groupId}` }],
+          [{ text: 'Yes', callback_data: `YES_${projectData.groupId}_${projectData.projectName}_${chatId}` }],
+          [{ text: 'No', callback_data: `NO_${projectData.groupId}_${projectData.projectName}_${chatId}` }],
         ],
       },
     });
@@ -85,26 +85,22 @@ const processedProjects = new Set(); // To prevent repeated clicks on Yes/No but
 // Function to handle triggers based on required partnerships
 async function handleTriggers(chatId) {
   try {
-
     // Fetch Partnership Tracking Projects data
     const trackingData = await fetchSheetData('Partnership Tracking Projects');
 
-   
-      let premiumIndex = 1;
+    let premiumIndex = 1;
 
-      // Locate the premiumGroupId in the sheet
-      const premiumRow = trackingData[0].filter((id,ind)=>{
-        if(id==chatId){
-          premiumIndex=ind
-          return
-        }
-      });
-     
-      if (premiumRow === -1) {
-        throw new Error('Premium group ID not found in tracking data');
+    // Locate the premiumGroupId in the sheet
+    const premiumRow = trackingData[0].find((id, ind) => {
+      if (id == chatId) {
+        premiumIndex = ind;
+        return true;
       }
+    });
 
-      
+    if (premiumRow === -1) {
+      throw new Error('Premium group ID not found in tracking data');
+    }
 
     console.log(`Processing project with group ID: ${chatId}`);
 
@@ -112,39 +108,48 @@ async function handleTriggers(chatId) {
 
     for (let k = premiumIndex; k < trackingData[0].length; k += 3) { // Step by 3 for each project block
       const projectName = trackingData[0][k - 2]; // Adjusted index for Project Name
-      const twitterLink = trackingData[0][k-1];     // Adjusted index for Twitter Link
+      const twitterLink = trackingData[0][k - 1]; // Adjusted index for Twitter Link
       
       if (!lastSentPartnerIndex[projectName]) {
         lastSentPartnerIndex[projectName] = 1; // Initialize index for this project
       }
-      
+
       const partnerIndex = lastSentPartnerIndex[projectName];
-      const totalPartners = trackingData.length - 1; // Subtracting 1 for the header row
+      let totalPartners = 0;
 
-      // console.log(totalPartners,partnerIndex,'hello')
+      // Find the number of rows in the premium column
+      for (let i = 2; i < trackingData.length; i++) {
+        if (trackingData[i][premiumIndex] !== undefined && trackingData[i][premiumIndex] !== null) {
+          totalPartners++;
+        }
+      }
 
+      console.log(`Total partners: ${totalPartners}, Current partnerIndex: ${partnerIndex}`);
+
+      // Stop if partnerIndex exceeds totalPartners and do not reset to 1
+      if (partnerIndex > totalPartners) {
+        console.log(`No more partners available for project: ${projectName}`);
+        // await bot.telegram.sendMessage(chatId, "We couldn't find any matches for today. As soon as we find suitable partners for you, we'll share them with you. Thank you for your patience!");
+      break; // Exit loop since no more partners are available
+      }
+ 
+      // Ensure that partnerIndex is valid before sending partner data
       if (partnerIndex <= totalPartners) {
         const partnerData = {
           projectName: trackingData[partnerIndex][k - 2], // Adjusted index for Project Name
-          twitterLink: trackingData[partnerIndex][k-1],     // Adjusted index for Twitter Link
-          groupId: trackingData[partnerIndex][k ],     // Group ID remains the same
+          twitterLink: trackingData[partnerIndex][k - 1], // Adjusted index for Twitter Link
+          groupId: trackingData[partnerIndex][k], // Group ID remains the same
           projectId: `${partnerIndex}`, // Use the partner group ID as the project ID for callback
         };
 
-        if (partnerData.projectName && partnerData.twitterLink && partnerData.groupId) { 
+        if (partnerData.projectName && partnerData.twitterLink && partnerData.groupId) {
           console.log(`Sending partner #${partnerIndex} for project: ${projectName}`);
           await sendMessageToGroup(chatId, partnerData);
-          partnerFound = true; 
+          partnerFound = true;
         }
 
-        lastSentPartnerIndex[projectName] += 1; // Move to the next partner for the next trigger
-  
-        if (lastSentPartnerIndex[projectName] > totalPartners) {
-          lastSentPartnerIndex[projectName] += 1; // Reset to the beginning if we've sent all partners
-        }
+        lastSentPartnerIndex[projectName] += 1; // Increment the partner index
         break; // Send only one partner per project per trigger
-      } else {
-        console.log(`No more partners available for project: ${projectName}`);
       }
     }
 
@@ -155,6 +160,7 @@ async function handleTriggers(chatId) {
     console.error('Error handling triggers:', error);
   }
 }
+
 
 // Command for manual activation
 bot.command('mypartner', async (ctx) => {
@@ -195,7 +201,7 @@ bot.on('callback_query', async (ctx) => {
   // Handling initial YES callback
   if (data.startsWith('YES_')) {
     
-    const [_, potentialGroupId, premiumGroupId] = data.split('_');
+    const [_, potentialGroupId,potentialPartnerName, premiumGroupId] = data.split('_');
     console.log(`Received 'YES' from premium project for potential group ID: ${potentialGroupId}`);
 
     // Mark the selected button as "✔️ Yes"
@@ -206,7 +212,7 @@ bot.on('callback_query', async (ctx) => {
       // Fetch Partnership Tracking Projects data
       const trackingData = await fetchSheetData('Partnership Tracking Projects');
       
-      let index = 1;
+      let index = 1; 
 
       // Locate the premiumGroupId in the sheet
       const premiumRow = trackingData[0].findIndex(id => id === premiumGroupId);
@@ -223,17 +229,6 @@ bot.on('callback_query', async (ctx) => {
       console.log(`Premium Project Twitter Link: ${premiumProjectTwitterLink}`);
       
 
-
-    
-    
- 
- 
-
-        // Fetch potential partner's data from trackingData or other source
-        const potentialPartnerData = trackingData.find(row => row[3] === potentialGroupId); // Adjust index based on your data
-      const potentialPartnerName= potentialPartnerData[1];
-      
-      // console.log(trackingData)
       console.log(`Sending potential project's details to premium project group.`);
 
       // Notify premium partner
@@ -247,7 +242,7 @@ Project Name: ${premiumProjectName}
 Twitter Link: ${premiumProjectTwitterLink}
 
 Please review and proceed with the partnership.
-      `, {
+      `, { 
         reply_markup: {
           inline_keyboard: [
             [{ text: 'Yes', callback_data: `CONFIRM_YES_${potentialGroupId}_${premiumGroupId}_${potentialPartnerName}` }],
@@ -263,8 +258,9 @@ Please review and proceed with the partnership.
 
   // Handling initial NO callback
   else if (data.startsWith('NO_')) {
-    const [_, potentialGroupId, ,potentialPartnerName] = data.split('_');
-    console.log(potentialPartnerName)
+
+    const [_, potentialGroupId,potentialPartnerName, premiumGroupId] = data.split('_');
+    // console.log('Premium partner id :',ctx.chat.id)
     console.log(`Received 'NO' from premium project for project ID: ${potentialGroupId}`);
 
     // Mark the selected button as "❌ No"
@@ -369,6 +365,7 @@ bot.launch().then(() => {
 }).catch(error => {
   console.error('Failed to launch the bot:', error);
 });
+
 
 // Catch unhandled promise rejections
 process.on('unhandledRejection', error => {
