@@ -1,3 +1,6 @@
+
+
+
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const { google } = require('googleapis');
@@ -41,12 +44,12 @@ async function fetchSheetData(sheetName) {
 // Function to send a message to a Telegram group
 async function sendMessageToGroup(chatId, projectData) {
   const message = `
-Please review the Potential partner:
+Please review your Potential partner:
 
 Project Name: ${projectData.projectName}
 Twitter Link: ${projectData.twitterLink}
     
-Would you like to proceed with this partnership?
+Would you like to proceed with a partnership with the project?
   `;
 
   console.log(`Sending message to group with chat ID: ${chatId}`);
@@ -162,8 +165,28 @@ async function handleTriggers(chatId) {
 }
 
 
+// // Command for manual activation
+// bot.command('partner', async (ctx) => {
+//   const chatId = ctx.chat.id;
+
+//   const isPremium = await isPremiumProjectGroup(chatId);
+//   if (!isPremium && !['7036220043', '6610902479'].includes(chatId.toString())) {
+//     await ctx.reply("This functionality works only for Premium partners of Collably Network.");
+//     return;
+//   }
+
+//   await handleTriggers(chatId);
+
+//   // Set an interval to automatically trigger the function every 6 hours
+//   setInterval(async () => {
+//     await handleTriggers(chatId);
+//   }, 21600000); // 6 hours = 21600000 ms
+// });
+
+let intervalMap = {}; // Object to store intervals for each chat
+
 // Command for manual activation
-bot.command('mypartner', async (ctx) => {
+bot.command('partner', async (ctx) => {
   const chatId = ctx.chat.id;
 
   const isPremium = await isPremiumProjectGroup(chatId);
@@ -175,9 +198,27 @@ bot.command('mypartner', async (ctx) => {
   await handleTriggers(chatId);
 
   // Set an interval to automatically trigger the function every 6 hours
-  setInterval(async () => {
+  const intervalId = setInterval(async () => {
     await handleTriggers(chatId);
-  }, 21600000); // 6 hours = 21600000 ms
+  
+}, 86400000); // 24 hours = 86400000 ms
+
+  // Store the interval in the intervalMap for this chat
+  intervalMap[chatId] = intervalId;
+  // await ctx.reply("Partner functionality activated. It will now trigger every 24 hours.");
+}); 
+
+// Command to stop the server and cancel all commands
+bot.command('stop', async (ctx) => { 
+  const chatId = ctx.chat.id;
+
+  if (intervalMap[chatId]) {
+    clearInterval(intervalMap[chatId]); // Clear the interval for this chat
+    delete intervalMap[chatId]; // Remove from the map
+    // await ctx.reply("The automatic partner functionality has been stopped.");
+  } else {
+    await ctx.reply("No active partner functionality found to stop.");
+  }
 });
 
 
@@ -232,16 +273,16 @@ bot.on('callback_query', async (ctx) => {
       console.log(`Sending potential project's details to premium project group.`);
 
       // Notify premium partner
-      await bot.telegram.sendMessage(premiumGroupId, `Thank you for your interest. Please wait for confirmation from the  ${potentialPartnerName} team.`);
+      await bot.telegram.sendMessage(premiumGroupId, `Thank you for your interest. Please wait for confirmation from the ${potentialPartnerName} team.`);
 
       // Send the potential project's details to the premium group's chat
       await bot.telegram.sendMessage(potentialGroupId, `
-        A potential partner has shown interest:
+        The below potential partner has shown interest in partnership with your project:
 
 Project Name: ${premiumProjectName}
 Twitter Link: ${premiumProjectTwitterLink}
 
-Please review and proceed with the partnership.
+Would you like to proceed partnership with the project?
       `, { 
         reply_markup: {
           inline_keyboard: [
@@ -303,12 +344,12 @@ Please review and proceed with the partnership.
     try {
       // Notify potential partner group
       await bot.telegram.sendMessage(potentialGroupId, `
-Thank you for your interest. Please create a group, and we'll invite the team for further discussion.
+Thank you for your interest. Please create a group with the project, share the link here, and tag @collablynetworkCEO & @kundanCLB. We'll invite the team for further discussion.
       `);
 
       // Notify premium partner that the potential partner accepted
       await bot.telegram.sendMessage(premiumGroupId, `
-The potential partner ${potentialPartnerName} has accepted the partnership.
+${potentialPartnerName} has accepted your partnership Proposal. Please create a group with the project, share the link here, and tag @collablynetworkCEO & @kundanCLB. We'll invite the team for further discussion.
       `);
     } catch (error) {
       console.error('Error handling CONFIRM_YES response:', error);
@@ -333,7 +374,7 @@ Ok! We'll find more suitable projects for you.
 
       // Notify premium partner group
       await bot.telegram.sendMessage(premiumGroupId, `
-${potentialPartnerName} is not interested in the project.
+Sorry to inform you that ${potentialPartnerName} has decided not to pursue a partnership with your project at this time. But don’t worry, we’ll continue to find more partnerships for you.
       `);
     } catch (error) {
       console.error('Error handling CONFIRM_NO response:', error);
@@ -371,4 +412,3 @@ bot.launch().then(() => {
 process.on('unhandledRejection', error => {
   console.error('Unhandled promise rejection:', error);
 });
-
